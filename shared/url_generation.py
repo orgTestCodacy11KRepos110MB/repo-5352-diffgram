@@ -83,8 +83,11 @@ def get_url_from_connector(connector, params, log):
     :param log:
     :return:
     """
+    t1 = time.time()
     connector.connect()
     response = connector.fetch_data(params)
+    t2 = time.time()
+    logger.info(f'Signed URL Fetched on: {t2-t1}s')
     if response is None or response.get('result') is None:
         msg = f'Error from connector: {params}. Response: {response}'
         if response.get('log') is not None and type(response.get('log')) == dict:
@@ -228,6 +231,8 @@ def generate_thumbnails_for_image(
 
     if type(blob_object) == Image and blob_object.url_signed_thumb_blob_path is None:
         # Try uploading thumbnails and then generating URL for them
+        logger.info('Thumbnail Upload Started')
+        t1 = time.time()
         blob_object, log = upload_thumbnail_for_connection_image(
             session = session,
             blob_object = blob_object,
@@ -244,6 +249,8 @@ def generate_thumbnails_for_image(
             log = regular_log.default()
             session.add(blob_object)
             return blob_object, log
+        t2 = time.time()
+        logger.info(f'Thumbnail Upload Finished {t2 - t1}')
     params['path'] = blob_object.url_signed_thumb_blob_path
     params['action_type'] = 'get_pre_signed_url'
     thumb_signed_url, log = get_url_from_connector(connector = client, params = params, log = log)
@@ -287,10 +294,13 @@ def connection_url_regenerate(session: Session,
     :param new_offset_in_seconds:
     :return:
     """
-
+    t1 = time.time()
     log = regular_log.default()
 
+    t1_member = time.time()
     member = get_member(session = session)
+    t2_member = time.time()
+    logger.info(f'Time to get member: {t2_member - t1_member}s')
     params = {
         'bucket_name': bucket_name,
         'path': blob_object.url_signed_blob_path if reference_file is None else reference_file.get_blob_path(),
@@ -308,16 +318,18 @@ def connection_url_regenerate(session: Session,
     )
     if regular_log.log_has_error(log):
         return blob_object, log
-
+    t1_get_url = time.time()
     signed_url, log = get_url_from_connector(connector = client, params = params, log = log)
     if regular_log.log_has_error(log):
         return blob_object, log
     if regular_log.log_has_error(log):
         return blob_object, log
     blob_object.url_signed = signed_url
-
+    t2_get_url = time.time()
+    logger.info(f'Time to get URL from connector: {t2_get_url - t1_get_url}s')
     # Extra assets (Depending on type)
     if type(blob_object) == Image:
+        t1_thumb = time.time()
         blob_object, url = generate_thumbnails_for_image(
             session = session,
             log = log,
@@ -331,6 +343,8 @@ def connection_url_regenerate(session: Session,
             access_token = None,
             reference_file = reference_file
         )
+        t2_thumb = time.time()
+        logger.info(f'Time to get Thumbs: {t2_thumb - t1_thumb}s')
     if type(blob_object) == TextFile and blob_object.tokens_url_signed_blob_path:
         blob_object, log = generate_text_token_url(
             session = session,
@@ -340,6 +354,8 @@ def connection_url_regenerate(session: Session,
             client = client,
         )
     session.add(blob_object)
+    t2 = time.time()
+    logger.info(f'Time to generate URL: {t2 - t1}s')
     return blob_object, log
 
 
